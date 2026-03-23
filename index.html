@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bus Stop Timings</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; padding-bottom: 50px; }
+        .container { width: 90%; margin: auto; }
+        h1 { margin-top: 20px; color: #2c3e50; }
+        
+        .bus-buttons button {
+            margin: 8px; padding: 12px 20px; font-size: 16px; border: none;
+            border-radius: 6px; background-color: #2c3e50; color: white;
+            cursor: pointer; transition: 0.3s;
+        }
+        .bus-buttons button:hover { background-color: #1abc9c; }
+
+        #searchInput {
+            display: none; margin: 15px 5px; padding: 10px;
+            width: 40%; border: 1px solid #ccc; border-radius: 4px;
+        }
+
+        #downloadPdfBtn {
+            display: none; margin: 15px 5px; padding: 10px 20px;
+            background-color: #27ae60; color: white; border: none;
+            border-radius: 6px; cursor: pointer; font-weight: bold;
+        }
+        #downloadPdfBtn:hover { background-color: #219150; }
+
+        .bus-section {
+            display: none; margin: 25px 0; background: white;
+            padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        h2 { background-color: #2c3e50; color: white; padding: 10px; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f8f9fa; color: #333; }
+        
+        /* Width adjustment for S.No column */
+        th:first-child, td:first-child { width: 50px; text-align: center; }
+
+        #warning { color: red; font-weight: bold; }
+        .footer { position: fixed; bottom: 0; width: 100%; padding: 10px; background-color: #2c3e50; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Bus Stop Timings</h1>
+        <p id="warning">Timings effective from 01/04/2026</p>
+
+        <div class="bus-buttons">
+            <button onclick="showBus('senior1')">HR39C 5612</button>
+            <button onclick="showBus('senior2')">HR37E 2772</button>
+            <button onclick="showBus('junior')">HR55X 9051</button>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="searchInput" placeholder="Search stop or name..." onkeyup="filterTable()">
+            <button id="downloadPdfBtn" onclick="downloadPDF()">Download PDF List</button>
+        </div>
+
+        <div id="senior1" class="bus-section">
+            <h2>HR39C 5612 (Senior Market)</h2>
+            <table>
+                <thead><tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="senior2" class="bus-section">
+            <h2>HR37E 2772 (Senior Outskirts)</h2>
+            <table>
+                <thead><tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="junior" class="bus-section">
+            <h2>HR55X 9051 (Junior)</h2>
+            <table>
+                <thead><tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="footer">&copy; 2026 Bus Timings</div>
+
+    <script>
+        const sheetId = "1FURmsXgeLq1J0hhTsn7VpQx6Y7K7omADCcEpP4SsMmo";
+        const sheetName = "Sheet1";
+        const apiKey = "AIzaSyBdEjBRnfEgszKKfMohT4NbnASeHhtkv_I";
+
+        async function fetchBusData() {
+            const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${sheetName}?key=${apiKey}`;
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                return parseSheetData(data.values);
+            } catch (error) {
+                console.error("Fetch error:", error);
+                return {};
+            }
+        }
+
+        function parseSheetData(values) {
+            if (!values) return {};
+            const busData = {};
+            values.slice(1).forEach(row => {
+                const [bus, stop, name, time] = row;
+                if (!busData[bus]) busData[bus] = [];
+                busData[bus].push({ stop, name, time });
+            });
+            return busData;
+        }
+
+        async function showBus(busId) {
+            document.querySelectorAll(".bus-section").forEach(s => s.style.display = "none");
+            
+            const busData = await fetchBusData();
+            if (!busData[busId]) return;
+
+            const section = document.getElementById(busId);
+            const tbody = section.querySelector("tbody");
+            tbody.innerHTML = "";
+
+            // Loop with index to create Serial Number
+            busData[busId].forEach((item, index) => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${index + 1}</td>
+                        <td>${item.stop}</td>
+                        <td>${item.name}</td>
+                        <td>${item.time}</td>
+                    </tr>`;
+            });
+
+            section.style.display = "block";
+            document.getElementById("searchInput").style.display = "inline-block";
+            document.getElementById("downloadPdfBtn").style.display = "inline-block";
+        }
+
+        function filterTable() {
+            const input = document.getElementById("searchInput").value.toLowerCase();
+            const section = document.querySelector(".bus-section:not([style*='display: none'])");
+            if (!section) return;
+            
+            let visibleCount = 1; // Reset counter for filtered view
+            section.querySelectorAll("tbody tr").forEach(row => {
+                const text = row.innerText.toLowerCase();
+                if (text.includes(input)) {
+                    row.style.display = "";
+                    row.cells[0].innerText = visibleCount++; // Adjust serial number while searching
+                } else {
+                    row.style.display = "none";
+                }
+            });
+        }
+
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            const section = document.querySelector(".bus-section:not([style*='display: none'])");
+            const busTitle = section.querySelector("h2").innerText;
+            const rows = [];
+
+            section.querySelectorAll("tbody tr").forEach(row => {
+                if (row.style.display !== "none") {
+                    rows.push([
+                        row.cells[0].innerText, // S.No
+                        row.cells[1].innerText, // Stop
+                        row.cells[2].innerText, // Name
+                        row.cells[3].innerText  // Time
+                    ]);
+                }
+            });
+
+            doc.setFontSize(18);
+            doc.text("Bus Stop Timings", 14, 20);
+            doc.setFontSize(12);
+            doc.text(`Route: ${busTitle}`, 14, 30);
+            doc.text("Effective: 01/04/2026", 14, 37);
+
+            doc.autoTable({
+                startY: 45,
+                head: [['S.No', 'Bus Stop', 'Name', 'Time']],
+                body: rows,
+                theme: 'striped',
+                headStyles: { fillColor: [44, 62, 80] },
+                styles: { fontSize: 10, cellPadding: 3 },
+                columnStyles: { 0: { halign: 'center' } } // Center align S.No in PDF
+            });
+
+            doc.save(`${busTitle.replace(/\s+/g, '_')}.pdf`);
+        }
+    </script>
+</body>
+</html>
