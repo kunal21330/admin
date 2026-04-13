@@ -8,8 +8,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     
     <style>
-        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; padding-bottom: 50px; }
-        .container { width: 90%; margin: auto; }
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; padding-bottom: 50px; margin: 0; }
+        .container { width: 95%; max-width: 900px; margin: auto; }
         h1 { margin-top: 20px; color: #2c3e50; }
         
         .bus-buttons button {
@@ -19,32 +19,41 @@
         }
         .bus-buttons button:hover { background-color: #1abc9c; }
 
-        #searchInput {
-            display: none; margin: 15px 5px; padding: 10px;
-            width: 40%; border: 1px solid #ccc; border-radius: 4px;
-        }
-
-        #downloadPdfBtn {
-            display: none; margin: 15px 5px; padding: 10px 20px;
-            background-color: #27ae60; color: white; border: none;
-            border-radius: 6px; cursor: pointer; font-weight: bold;
-        }
+        .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
+        #searchInput { display: none; padding: 10px; width: 60%; max-width: 300px; border: 1px solid #ccc; border-radius: 4px; }
+        #downloadPdfBtn { display: none; padding: 10px 20px; background-color: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         #downloadPdfBtn:hover { background-color: #219150; }
 
-        .bus-section {
-            display: none; margin: 25px 0; background: white;
-            padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-        }
-        h2 { background-color: #2c3e50; color: white; padding: 10px; border-radius: 8px; }
+        .bus-section { display: none; margin: 25px 0; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); overflow-x: auto;}
+        h2 { background-color: #2c3e50; color: white; padding: 10px; border-radius: 8px; margin-top: 0; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
         th { background-color: #f8f9fa; color: #333; }
-        
-        /* Width adjustment for S.No column */
         th:first-child, td:first-child { width: 50px; text-align: center; }
+        
+        /* Make rows look clickable */
+        tbody tr { transition: background-color 0.2s; cursor: pointer; }
+        tbody tr:hover { background-color: #e8f4f8; }
 
         #warning { color: red; font-weight: bold; }
         .footer { position: fixed; bottom: 0; width: 100%; padding: 10px; background-color: #2c3e50; color: white; }
+
+        /* --- MODAL (POPUP) STYLES --- */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
+        }
+        .modal-box {
+            background: white; padding: 25px; border-radius: 10px; width: 90%; max-width: 350px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 15px;
+        }
+        .modal-box h3 { margin: 0 0 10px 0; color: #2c3e50; }
+        .modal-box select, .modal-box input { padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; width: 100%; box-sizing: border-box; }
+        
+        .btn-action { padding: 12px; font-size: 16px; font-weight: bold; color: white; border: none; border-radius: 6px; cursor: pointer; }
+        .btn-add { background-color: #3498db; } .btn-add:hover { background-color: #2980b9; }
+        .btn-delete { background-color: #e74c3c; } .btn-delete:hover { background-color: #c0392b; }
+        .btn-cancel { background-color: #7f8c8d; } .btn-cancel:hover { background-color: #95a5a6; }
     </style>
 </head>
 <body>
@@ -54,9 +63,9 @@
         <p id="warning">Timings effective from 01/04/2026</p>
 
         <div class="bus-buttons">
-            <button onclick="showBus('senior1')">HR39C 5612</button>
-            <button onclick="showBus('senior2')">HR37E 2772</button>
-            <button onclick="showBus('junior')">HR55X 9051</button>
+            <button onclick="loadBus('senior1')">HR39C 5612</button>
+            <button onclick="loadBus('senior2')">HR37E 2772</button>
+            <button onclick="loadBus('junior')">HR55X 9051</button>
         </div>
 
         <div class="controls">
@@ -64,46 +73,65 @@
             <button id="downloadPdfBtn" onclick="downloadPDF()">Download PDF List</button>
         </div>
 
-        <div id="senior1" class="bus-section">
-            <h2>HR39C 5612 (Senior Market)</h2>
+        <div id="activeBusSection" class="bus-section">
+            <h2 id="busTitle">Loading...</h2>
             <table>
-                <thead><tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr></thead>
-                <tbody></tbody>
+                <thead>
+                    <tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr>
+                </thead>
+                <tbody id="busTableBody"></tbody>
             </table>
         </div>
+    </div>
 
-        <div id="senior2" class="bus-section">
-            <h2>HR37E 2772 (Senior Outskirts)</h2>
-            <table>
-                <thead><tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr></thead>
-                <tbody></tbody>
-            </table>
+    <div id="actionModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3 id="actionModalTitle">Student Options</h3>
+            <button class="btn-action btn-add" onclick="openAddModal()">Add Student Below</button>
+            <button class="btn-action btn-delete" onclick="executeDelete()">Delete Student</button>
+            <button class="btn-action btn-cancel" onclick="closeModals()">Cancel</button>
         </div>
+    </div>
 
-        <div id="junior" class="bus-section">
-            <h2>HR55X 9051 (Junior)</h2>
-            <table>
-                <thead><tr><th>S.No</th><th>Bus Stop</th><th>Name</th><th>Time</th></tr></thead>
-                <tbody></tbody>
-            </table>
+    <div id="addModal" class="modal-overlay">
+        <div class="modal-box">
+            <h3>Add Student</h3>
+            <select id="stopDropdown" onchange="checkCustomStop()">
+                </select>
+            <input type="text" id="customStop" placeholder="Type new stop name..." style="display:none;">
+            <input type="text" id="studentName" placeholder="Student Name">
+            <input type="time" id="studentTime">
+            <button class="btn-action btn-add" id="saveBtn" onclick="executeAdd()">Save Student</button>
+            <button class="btn-action btn-cancel" onclick="closeModals()">Cancel</button>
         </div>
     </div>
 
     <div class="footer">&copy; 2026 Bus Timings</div>
 
     <script>
-        const sheetId = "1FURmsXgeLq1J0hhTsn7VpQx6Y7K7omADCcEpP4SsMmo";
-        const sheetName = "Sheet1";
-        const apiKey = "AIzaSyBdEjBRnfEgszKKfMohT4NbnASeHhtkv_I";
+        // --- PASTE YOUR WEB APP URL BELOW ---
+        const scriptUrl = "https://script.google.com/macros/s/AKfycbzbl90xZu2eczNYVqzRah7bHJh7iaHkkyGwzE_Z98qvp3xe5mymbu8wdNKaVWvvtXQ/exec"; 
+        
+        const busTitles = {
+            'senior1': 'HR39C 5612 (Senior Market)',
+            'senior2': 'HR37E 2772 (Senior Outskirts)',
+            'junior': 'HR55X 9051 (Junior)'
+        };
 
+        let currentBusId = null;
+        let allBusData = {}; 
+        let targetStop = "";
+        let targetName = "";
+
+        // Fetch Data from Google (Only happens when you first click a bus)
         async function fetchBusData() {
-            const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${sheetName}?key=${apiKey}`;
             try {
-                const response = await fetch(url);
+                const response = await fetch(scriptUrl);
                 const data = await response.json();
-                return parseSheetData(data.values);
+                allBusData = parseSheetData(data.values);
+                return allBusData;
             } catch (error) {
-                console.error("Fetch error:", error);
+                alert("Error connecting to database. Check your Google Apps Script URL.");
                 return {};
             }
         }
@@ -119,43 +147,182 @@
             return busData;
         }
 
-        async function showBus(busId) {
-            document.querySelectorAll(".bus-section").forEach(s => s.style.display = "none");
+        // Click a bus button -> Downloads data from Google
+        async function loadBus(busId) {
+            currentBusId = busId;
+            document.getElementById("activeBusSection").style.display = "block";
+            document.getElementById("busTitle").innerText = busTitles[busId] + " - Loading...";
             
-            const busData = await fetchBusData();
-            if (!busData[busId]) return;
-
-            const section = document.getElementById(busId);
-            const tbody = section.querySelector("tbody");
-            tbody.innerHTML = "";
-
-            // Loop with index to create Serial Number
-            busData[busId].forEach((item, index) => {
-                tbody.innerHTML += `
-                    <tr>
-                        <td>${index + 1}</td>
-                        <td>${item.stop}</td>
-                        <td>${item.name}</td>
-                        <td>${item.time}</td>
-                    </tr>`;
-            });
-
-            section.style.display = "block";
+            await fetchBusData(); // Wait for Google
+            
+            document.getElementById("busTitle").innerText = busTitles[busId];
+            renderTable(); // Draw the table instantly
+            
             document.getElementById("searchInput").style.display = "inline-block";
             document.getElementById("downloadPdfBtn").style.display = "inline-block";
         }
 
+        // Draws the HTML table from local memory (INSTANT)
+        function renderTable() {
+            const tbody = document.getElementById("busTableBody");
+            tbody.innerHTML = "";
+
+            if (allBusData[currentBusId] && allBusData[currentBusId].length > 0) {
+                allBusData[currentBusId].forEach((item, index) => {
+                    const tr = document.createElement("tr");
+                    tr.onclick = () => openActionModal(item.stop, item.name);
+                    tr.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${item.stop}</td>
+                        <td>${item.name}</td>
+                        <td>${item.time}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } else {
+                tbody.innerHTML = `<tr onclick="openAddModal(true)"><td colspan="4" style="text-align:center; color:blue;">No students found. Click here to add the first one!</td></tr>`;
+            }
+            // If there's an active search, re-apply it instantly
+            filterTable(); 
+        }
+
+        // --- MODAL CONTROLS ---
+        function openActionModal(stop, name) {
+            targetStop = stop;
+            targetName = name;
+            document.getElementById("actionModalTitle").innerText = `Options for ${name}`;
+            document.getElementById("actionModal").style.display = "flex";
+        }
+
+        function closeModals() {
+            document.getElementById("actionModal").style.display = "none";
+            document.getElementById("addModal").style.display = "none";
+            document.getElementById("studentName").value = "";
+            document.getElementById("studentTime").value = "";
+            document.getElementById("customStop").style.display = "none";
+            document.getElementById("customStop").value = "";
+        }
+
+        function openAddModal(isFirstStudent = false) {
+            document.getElementById("actionModal").style.display = "none";
+            
+            const dropdown = document.getElementById("stopDropdown");
+            dropdown.innerHTML = "";
+            
+            if (allBusData[currentBusId]) {
+                const uniqueStops = [...new Set(allBusData[currentBusId].map(item => item.stop))];
+                uniqueStops.forEach(stop => {
+                    dropdown.innerHTML += `<option value="${stop}">${stop}</option>`;
+                });
+            }
+            
+            dropdown.innerHTML += `<option value="NEW_STOP">-- Add New Stop --</option>`;
+            
+            // --- NEW CODE: Pre-select the stop ---
+            if(isFirstStudent) { 
+                targetStop = ""; 
+                targetName = ""; 
+            } else if (targetStop) {
+                dropdown.value = targetStop; // Auto-selects the clicked student's stop
+            }
+            
+            checkCustomStop(); 
+            document.getElementById("addModal").style.display = "flex";
+        }
+
+        function checkCustomStop() {
+            const dropdown = document.getElementById("stopDropdown");
+            const customInput = document.getElementById("customStop");
+            customInput.style.display = dropdown.value === "NEW_STOP" ? "block" : "none";
+        }
+
+        function format12HourTime(time24) {
+            if (!time24) return "";
+            let [hours, minutes] = time24.split(':');
+            hours = parseInt(hours, 10);
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12 || 12; 
+            return `${hours}:${minutes} ${ampm}`;
+        }
+
+        // --- FASTER ADD LOGIC ---
+        async function executeAdd() {
+            const dropdown = document.getElementById("stopDropdown");
+            let finalStop = dropdown.value === "NEW_STOP" ? document.getElementById("customStop").value.trim() : dropdown.value;
+            const name = document.getElementById("studentName").value.trim();
+            const rawTime = document.getElementById("studentTime").value; 
+            
+            if (!finalStop || !name || !rawTime) return alert("Please fill in Stop, Name, and Time.");
+
+            const formattedTime = format12HourTime(rawTime);
+            document.getElementById("saveBtn").innerText = "Saving...";
+
+            const formData = new URLSearchParams();
+            formData.append("action", "add");
+            formData.append("bus", currentBusId);
+            formData.append("targetStop", targetStop); 
+            formData.append("targetName", targetName); 
+            formData.append("stop", finalStop);
+            formData.append("name", name);
+            formData.append("time", formattedTime);
+
+            // Send to Google in the background
+            await fetch(scriptUrl, { method: "POST", body: formData });
+            
+            // INSTANT LOCAL UPDATE
+            if (!allBusData[currentBusId]) allBusData[currentBusId] = [];
+            
+            const newStudent = { stop: finalStop, name: name, time: formattedTime };
+            const insertIndex = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
+            
+            if (insertIndex !== -1) {
+                allBusData[currentBusId].splice(insertIndex + 1, 0, newStudent); // Insert below target
+            } else {
+                allBusData[currentBusId].push(newStudent); // Fallback to bottom
+            }
+
+            document.getElementById("saveBtn").innerText = "Save Student";
+            closeModals();
+            renderTable(); // Instantly redraws without downloading from Google!
+        }
+
+        // --- FASTER DELETE LOGIC ---
+        async function executeDelete() {
+            if (!confirm(`Are you sure you want to permanently delete ${targetName}?`)) return;
+
+            document.querySelector(".btn-delete").innerText = "Deleting...";
+
+            const formData = new URLSearchParams();
+            formData.append("action", "delete");
+            formData.append("bus", currentBusId);
+            formData.append("stop", targetStop);
+            formData.append("name", targetName);
+
+            // Send delete command to Google
+            await fetch(scriptUrl, { method: "POST", body: formData });
+            
+            // INSTANT LOCAL UPDATE
+            const deleteIndex = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
+            if (deleteIndex !== -1) {
+                allBusData[currentBusId].splice(deleteIndex, 1); // Remove from local memory
+            }
+            
+            document.querySelector(".btn-delete").innerText = "Delete Student";
+            closeModals();
+            renderTable(); // Instantly redraws!
+        }
+
+        // --- SEARCH & PDF ---
         function filterTable() {
             const input = document.getElementById("searchInput").value.toLowerCase();
-            const section = document.querySelector(".bus-section:not([style*='display: none'])");
-            if (!section) return;
+            const rows = document.querySelectorAll("#busTableBody tr");
             
-            let visibleCount = 1; // Reset counter for filtered view
-            section.querySelectorAll("tbody tr").forEach(row => {
+            let visibleCount = 1;
+            rows.forEach(row => {
                 const text = row.innerText.toLowerCase();
                 if (text.includes(input)) {
                     row.style.display = "";
-                    row.cells[0].innerText = visibleCount++; // Adjust serial number while searching
+                    row.cells[0].innerText = visibleCount++; 
                 } else {
                     row.style.display = "none";
                 }
@@ -165,36 +332,24 @@
         function downloadPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            
-            const section = document.querySelector(".bus-section:not([style*='display: none'])");
-            const busTitle = section.querySelector("h2").innerText;
+            const busTitle = document.getElementById("busTitle").innerText;
             const rows = [];
 
-            section.querySelectorAll("tbody tr").forEach(row => {
-                if (row.style.display !== "none") {
-                    rows.push([
-                        row.cells[0].innerText, // S.No
-                        row.cells[1].innerText, // Stop
-                        row.cells[2].innerText, // Name
-                        row.cells[3].innerText  // Time
-                    ]);
+            document.querySelectorAll("#busTableBody tr").forEach(row => {
+                if (row.style.display !== "none" && row.cells.length > 1) {
+                    rows.push([row.cells[0].innerText, row.cells[1].innerText, row.cells[2].innerText, row.cells[3].innerText]);
                 }
             });
 
-            doc.setFontSize(18);
-            doc.text("Bus Stop Timings", 14, 20);
-            doc.setFontSize(12);
-            doc.text(`Route: ${busTitle}`, 14, 30);
+            doc.setFontSize(18); doc.text("Bus Stop Timings", 14, 20);
+            doc.setFontSize(12); doc.text(`Route: ${busTitle}`, 14, 30);
             doc.text("Effective: 01/04/2026", 14, 37);
 
             doc.autoTable({
                 startY: 45,
                 head: [['S.No', 'Bus Stop', 'Name', 'Time']],
-                body: rows,
-                theme: 'striped',
-                headStyles: { fillColor: [44, 62, 80] },
-                styles: { fontSize: 10, cellPadding: 3 },
-                columnStyles: { 0: { halign: 'center' } } // Center align S.No in PDF
+                body: rows, theme: 'striped', headStyles: { fillColor: [44, 62, 80] },
+                styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { halign: 'center' } }
             });
 
             doc.save(`${busTitle.replace(/\s+/g, '_')}.pdf`);
