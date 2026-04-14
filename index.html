@@ -6,6 +6,7 @@
     <title>Bus Stop Timings</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     
     <style>
         body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f4; padding-bottom: 50px; margin: 0; }
@@ -33,6 +34,9 @@
         
         tbody tr { transition: background-color 0.2s; cursor: pointer; }
         tbody tr:hover { background-color: #e8f4f8; }
+        
+        /* NEW: Styling for the row while it is being dragged */
+        .sortable-ghost { opacity: 0.4; background-color: #f1c40f; }
 
         #warning { color: red; font-weight: bold; }
         .footer { position: fixed; bottom: 0; width: 100%; padding: 10px; background-color: #2c3e50; color: white; }
@@ -119,12 +123,11 @@
 
         let currentBusId = null;
         let allBusData = {}; 
-        
-        // Target tracking
         let targetStop = "";
         let targetName = "";
         let targetTime = "";
-        let isEditing = false; // Flag to tell save button what to do
+        let isEditing = false; 
+        let sortableInstance = null; // Stores the drag-and-drop tool
 
         async function fetchBusData() {
             try {
@@ -169,7 +172,6 @@
             if (allBusData[currentBusId] && allBusData[currentBusId].length > 0) {
                 allBusData[currentBusId].forEach((item, index) => {
                     const tr = document.createElement("tr");
-                    // Pass the time parameter too so we can edit it
                     tr.onclick = () => openActionModal(item.stop, item.name, item.time);
                     tr.innerHTML = `
                         <td>${index + 1}</td>
@@ -180,9 +182,43 @@
                     tbody.appendChild(tr);
                 });
             } else {
-                tbody.innerHTML = `<tr onclick="openAddModal(true)"><td colspan="4" style="text-align:center; color:blue;">No students found. Click here to add the first one!</td></tr>`;
+                tbody.innerHTML = `<tr class="no-drag" onclick="openAddModal(true)"><td colspan="4" style="text-align:center; color:blue;">No students found. Click here to add the first one!</td></tr>`;
             }
             filterTable(); 
+            initSortable(); // Re-bind the drag tool every time the table is drawn
+        }
+
+        // --- NEW: DRAG AND DROP / LONG PRESS LOGIC ---
+        function initSortable() {
+            const tbody = document.getElementById("busTableBody");
+            if (sortableInstance) sortableInstance.destroy(); // Clear old tool
+
+            sortableInstance = new Sortable(tbody, {
+                animation: 150,
+                delay: 200, // Requires 200ms hold on mobile before dragging starts
+                delayOnTouchOnly: true, // Desktop remains instant click-and-drag
+                filter: ".no-drag", // Prevents dragging the "No students found" message
+                onEnd: async function (evt) {
+                    if (evt.oldIndex === evt.newIndex) return; // Didn't actually move
+
+                    // 1. Move the data locally
+                    const movedItem = allBusData[currentBusId].splice(evt.oldIndex, 1)[0];
+                    allBusData[currentBusId].splice(evt.newIndex, 0, movedItem);
+
+                    // 2. Visually redraw the table to fix the Serial Numbers
+                    renderTable(); 
+
+                    // 3. Save to Google Sheet
+                    document.getElementById("busTitle").innerText = busTitles[currentBusId] + " - Saving order...";
+                    const formData = new URLSearchParams();
+                    formData.append("action", "reorder");
+                    formData.append("bus", currentBusId);
+                    formData.append("newOrder", JSON.stringify(allBusData[currentBusId]));
+
+                    await fetch(scriptUrl, { method: "POST", body: formData });
+                    document.getElementById("busTitle").innerText = busTitles[currentBusId];
+                }
+            });
         }
 
         // --- MODAL CONTROLS ---
@@ -221,7 +257,6 @@
             customInput.style.display = dropdown.value === "NEW_STOP" ? "block" : "none";
         }
 
-        // Opens form for ADDING
         function openAddModal(isFirstStudent = false) {
             isEditing = false;
             document.getElementById("actionModal").style.display = "none";
@@ -237,14 +272,11 @@
                 dropdown.value = targetStop; 
             }
 
-            // Defaults time input to 07:00 AM 
             document.getElementById("studentTime").value = "07:00"; 
-            
             checkCustomStop(); 
             document.getElementById("formModal").style.display = "flex";
         }
 
-        // Opens form for EDITING
         function openEditModal() {
             isEditing = true;
             document.getElementById("actionModal").style.display = "none";
@@ -262,8 +294,6 @@
             document.getElementById("formModal").style.display = "flex";
         }
 
-        // --- TIME FORMATTING HELPERS ---
-        // Converts "14:30" to "2:30 PM" (For saving to sheet)
         function format12HourTime(time24) {
             if (!time24) return "";
             let [hours, minutes] = time24.split(':');
@@ -273,7 +303,6 @@
             return `${hours}:${minutes} ${ampm}`;
         }
 
-        // Converts "2:30 PM" back to "14:30" (For pre-filling the edit form)
         function format24HourTime(time12) {
             if (!time12) return "07:00";
             const match = time12.match(/(\d+):(\d+)\s*(AM|PM)/i);
@@ -285,7 +314,6 @@
             return `${hours.toString().padStart(2, '0')}:${minutes}`;
         }
 
-        // --- SAVE LOGIC (Handles both Add and Edit) ---
         async function executeSave() {
             const dropdown = document.getElementById("stopDropdown");
             let finalStop = dropdown.value === "NEW_STOP" ? document.getElementById("customStop").value.trim() : dropdown.value;
@@ -306,10 +334,8 @@
             formData.append("name", name);
             formData.append("time", formattedTime);
 
-            // Send to Google
             await fetch(scriptUrl, { method: "POST", body: formData });
             
-            // Local Update
             if (!allBusData[currentBusId]) allBusData[currentBusId] = [];
             const indexToUpdate = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
             const updatedStudent = { stop: finalStop, name: name, time: formattedTime };
@@ -328,7 +354,6 @@
             renderTable(); 
         }
 
-        // --- DELETE LOGIC ---
         async function executeDelete() {
             if (!confirm(`Are you sure you want to permanently delete ${targetName}?`)) return;
             document.querySelector(".btn-delete").innerText = "Deleting...";
@@ -349,7 +374,6 @@
             renderTable(); 
         }
 
-        // --- SEARCH & PDF ---
         function filterTable() {
             const input = document.getElementById("searchInput").value.toLowerCase();
             const rows = document.querySelectorAll("#busTableBody tr");
