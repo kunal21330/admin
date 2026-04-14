@@ -31,14 +31,12 @@
         th { background-color: #f8f9fa; color: #333; }
         th:first-child, td:first-child { width: 50px; text-align: center; }
         
-        /* Make rows look clickable */
         tbody tr { transition: background-color 0.2s; cursor: pointer; }
         tbody tr:hover { background-color: #e8f4f8; }
 
         #warning { color: red; font-weight: bold; }
         .footer { position: fixed; bottom: 0; width: 100%; padding: 10px; background-color: #2c3e50; color: white; }
 
-        /* --- MODAL (POPUP) STYLES --- */
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
@@ -52,6 +50,7 @@
         
         .btn-action { padding: 12px; font-size: 16px; font-weight: bold; color: white; border: none; border-radius: 6px; cursor: pointer; }
         .btn-add { background-color: #3498db; } .btn-add:hover { background-color: #2980b9; }
+        .btn-edit { background-color: #f39c12; } .btn-edit:hover { background-color: #d68910; }
         .btn-delete { background-color: #e74c3c; } .btn-delete:hover { background-color: #c0392b; }
         .btn-cancel { background-color: #7f8c8d; } .btn-cancel:hover { background-color: #95a5a6; }
     </style>
@@ -87,21 +86,21 @@
     <div id="actionModal" class="modal-overlay">
         <div class="modal-box">
             <h3 id="actionModalTitle">Student Options</h3>
+            <button class="btn-action btn-edit" onclick="openEditModal()">Edit Student</button>
             <button class="btn-action btn-add" onclick="openAddModal()">Add Student Below</button>
             <button class="btn-action btn-delete" onclick="executeDelete()">Delete Student</button>
             <button class="btn-action btn-cancel" onclick="closeModals()">Cancel</button>
         </div>
     </div>
 
-    <div id="addModal" class="modal-overlay">
+    <div id="formModal" class="modal-overlay">
         <div class="modal-box">
-            <h3>Add Student</h3>
-            <select id="stopDropdown" onchange="checkCustomStop()">
-                </select>
+            <h3 id="formModalTitle">Add Student</h3>
+            <select id="stopDropdown" onchange="checkCustomStop()"></select>
             <input type="text" id="customStop" placeholder="Type new stop name..." style="display:none;">
             <input type="text" id="studentName" placeholder="Student Name">
             <input type="time" id="studentTime">
-            <button class="btn-action btn-add" id="saveBtn" onclick="executeAdd()">Save Student</button>
+            <button class="btn-action btn-add" id="saveBtn" onclick="executeSave()">Save Student</button>
             <button class="btn-action btn-cancel" onclick="closeModals()">Cancel</button>
         </div>
     </div>
@@ -120,10 +119,13 @@
 
         let currentBusId = null;
         let allBusData = {}; 
+        
+        // Target tracking
         let targetStop = "";
         let targetName = "";
+        let targetTime = "";
+        let isEditing = false; // Flag to tell save button what to do
 
-        // Fetch Data from Google (Only happens when you first click a bus)
         async function fetchBusData() {
             try {
                 const response = await fetch(scriptUrl);
@@ -131,7 +133,7 @@
                 allBusData = parseSheetData(data.values);
                 return allBusData;
             } catch (error) {
-                alert("Error connecting to database. Check your Google Apps Script URL.");
+                alert("Error connecting to database.");
                 return {};
             }
         }
@@ -147,22 +149,19 @@
             return busData;
         }
 
-        // Click a bus button -> Downloads data from Google
         async function loadBus(busId) {
             currentBusId = busId;
             document.getElementById("activeBusSection").style.display = "block";
             document.getElementById("busTitle").innerText = busTitles[busId] + " - Loading...";
             
-            await fetchBusData(); // Wait for Google
-            
+            await fetchBusData(); 
             document.getElementById("busTitle").innerText = busTitles[busId];
-            renderTable(); // Draw the table instantly
+            renderTable(); 
             
             document.getElementById("searchInput").style.display = "inline-block";
             document.getElementById("downloadPdfBtn").style.display = "inline-block";
         }
 
-        // Draws the HTML table from local memory (INSTANT)
         function renderTable() {
             const tbody = document.getElementById("busTableBody");
             tbody.innerHTML = "";
@@ -170,7 +169,8 @@
             if (allBusData[currentBusId] && allBusData[currentBusId].length > 0) {
                 allBusData[currentBusId].forEach((item, index) => {
                     const tr = document.createElement("tr");
-                    tr.onclick = () => openActionModal(item.stop, item.name);
+                    // Pass the time parameter too so we can edit it
+                    tr.onclick = () => openActionModal(item.stop, item.name, item.time);
                     tr.innerHTML = `
                         <td>${index + 1}</td>
                         <td>${item.stop}</td>
@@ -182,52 +182,37 @@
             } else {
                 tbody.innerHTML = `<tr onclick="openAddModal(true)"><td colspan="4" style="text-align:center; color:blue;">No students found. Click here to add the first one!</td></tr>`;
             }
-            // If there's an active search, re-apply it instantly
             filterTable(); 
         }
 
         // --- MODAL CONTROLS ---
-        function openActionModal(stop, name) {
+        function openActionModal(stop, name, time) {
             targetStop = stop;
             targetName = name;
+            targetTime = time; 
             document.getElementById("actionModalTitle").innerText = `Options for ${name}`;
             document.getElementById("actionModal").style.display = "flex";
         }
 
         function closeModals() {
             document.getElementById("actionModal").style.display = "none";
-            document.getElementById("addModal").style.display = "none";
+            document.getElementById("formModal").style.display = "none";
             document.getElementById("studentName").value = "";
-            document.getElementById("studentTime").value = "";
             document.getElementById("customStop").style.display = "none";
             document.getElementById("customStop").value = "";
         }
 
-        function openAddModal(isFirstStudent = false) {
-            document.getElementById("actionModal").style.display = "none";
-            
+        function populateDropdown() {
             const dropdown = document.getElementById("stopDropdown");
             dropdown.innerHTML = "";
-            
             if (allBusData[currentBusId]) {
                 const uniqueStops = [...new Set(allBusData[currentBusId].map(item => item.stop))];
                 uniqueStops.forEach(stop => {
                     dropdown.innerHTML += `<option value="${stop}">${stop}</option>`;
                 });
             }
-            
             dropdown.innerHTML += `<option value="NEW_STOP">-- Add New Stop --</option>`;
-            
-            // --- NEW CODE: Pre-select the stop ---
-            if(isFirstStudent) { 
-                targetStop = ""; 
-                targetName = ""; 
-            } else if (targetStop) {
-                dropdown.value = targetStop; // Auto-selects the clicked student's stop
-            }
-            
-            checkCustomStop(); 
-            document.getElementById("addModal").style.display = "flex";
+            return dropdown;
         }
 
         function checkCustomStop() {
@@ -236,6 +221,49 @@
             customInput.style.display = dropdown.value === "NEW_STOP" ? "block" : "none";
         }
 
+        // Opens form for ADDING
+        function openAddModal(isFirstStudent = false) {
+            isEditing = false;
+            document.getElementById("actionModal").style.display = "none";
+            document.getElementById("formModalTitle").innerText = "Add Student Below";
+            document.getElementById("saveBtn").innerText = "Save Student";
+            document.getElementById("saveBtn").className = "btn-action btn-add";
+            
+            const dropdown = populateDropdown();
+            
+            if(isFirstStudent) { 
+                targetStop = ""; targetName = ""; 
+            } else if (targetStop) {
+                dropdown.value = targetStop; 
+            }
+
+            // Defaults time input to 07:00 AM 
+            document.getElementById("studentTime").value = "07:00"; 
+            
+            checkCustomStop(); 
+            document.getElementById("formModal").style.display = "flex";
+        }
+
+        // Opens form for EDITING
+        function openEditModal() {
+            isEditing = true;
+            document.getElementById("actionModal").style.display = "none";
+            document.getElementById("formModalTitle").innerText = "Edit Student";
+            document.getElementById("saveBtn").innerText = "Update Student";
+            document.getElementById("saveBtn").className = "btn-action btn-edit";
+
+            const dropdown = populateDropdown();
+            dropdown.value = targetStop;
+            
+            document.getElementById("studentName").value = targetName;
+            document.getElementById("studentTime").value = format24HourTime(targetTime); 
+            
+            checkCustomStop();
+            document.getElementById("formModal").style.display = "flex";
+        }
+
+        // --- TIME FORMATTING HELPERS ---
+        // Converts "14:30" to "2:30 PM" (For saving to sheet)
         function format12HourTime(time24) {
             if (!time24) return "";
             let [hours, minutes] = time24.split(':');
@@ -245,8 +273,20 @@
             return `${hours}:${minutes} ${ampm}`;
         }
 
-        // --- FASTER ADD LOGIC ---
-        async function executeAdd() {
+        // Converts "2:30 PM" back to "14:30" (For pre-filling the edit form)
+        function format24HourTime(time12) {
+            if (!time12) return "07:00";
+            const match = time12.match(/(\d+):(\d+)\s*(AM|PM)/i);
+            if (!match) return "07:00";
+            let [ , hours, minutes, modifier] = match;
+            hours = parseInt(hours, 10);
+            if (hours === 12) hours = modifier.toUpperCase() === 'AM' ? 0 : 12;
+            else if (modifier.toUpperCase() === 'PM') hours += 12;
+            return `${hours.toString().padStart(2, '0')}:${minutes}`;
+        }
+
+        // --- SAVE LOGIC (Handles both Add and Edit) ---
+        async function executeSave() {
             const dropdown = document.getElementById("stopDropdown");
             let finalStop = dropdown.value === "NEW_STOP" ? document.getElementById("customStop").value.trim() : dropdown.value;
             const name = document.getElementById("studentName").value.trim();
@@ -258,7 +298,7 @@
             document.getElementById("saveBtn").innerText = "Saving...";
 
             const formData = new URLSearchParams();
-            formData.append("action", "add");
+            formData.append("action", isEditing ? "edit" : "add");
             formData.append("bus", currentBusId);
             formData.append("targetStop", targetStop); 
             formData.append("targetName", targetName); 
@@ -266,61 +306,56 @@
             formData.append("name", name);
             formData.append("time", formattedTime);
 
-            // Send to Google in the background
+            // Send to Google
             await fetch(scriptUrl, { method: "POST", body: formData });
             
-            // INSTANT LOCAL UPDATE
+            // Local Update
             if (!allBusData[currentBusId]) allBusData[currentBusId] = [];
-            
-            const newStudent = { stop: finalStop, name: name, time: formattedTime };
-            const insertIndex = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
-            
-            if (insertIndex !== -1) {
-                allBusData[currentBusId].splice(insertIndex + 1, 0, newStudent); // Insert below target
+            const indexToUpdate = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
+            const updatedStudent = { stop: finalStop, name: name, time: formattedTime };
+
+            if (isEditing) {
+                if (indexToUpdate !== -1) allBusData[currentBusId][indexToUpdate] = updatedStudent;
             } else {
-                allBusData[currentBusId].push(newStudent); // Fallback to bottom
+                if (indexToUpdate !== -1) {
+                    allBusData[currentBusId].splice(indexToUpdate + 1, 0, updatedStudent); 
+                } else {
+                    allBusData[currentBusId].push(updatedStudent); 
+                }
             }
 
-            document.getElementById("saveBtn").innerText = "Save Student";
             closeModals();
-            renderTable(); // Instantly redraws without downloading from Google!
+            renderTable(); 
         }
 
-        // --- FASTER DELETE LOGIC ---
+        // --- DELETE LOGIC ---
         async function executeDelete() {
             if (!confirm(`Are you sure you want to permanently delete ${targetName}?`)) return;
-
             document.querySelector(".btn-delete").innerText = "Deleting...";
 
             const formData = new URLSearchParams();
             formData.append("action", "delete");
             formData.append("bus", currentBusId);
-            formData.append("stop", targetStop);
-            formData.append("name", targetName);
+            formData.append("targetStop", targetStop);
+            formData.append("targetName", targetName);
 
-            // Send delete command to Google
             await fetch(scriptUrl, { method: "POST", body: formData });
             
-            // INSTANT LOCAL UPDATE
             const deleteIndex = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
-            if (deleteIndex !== -1) {
-                allBusData[currentBusId].splice(deleteIndex, 1); // Remove from local memory
-            }
+            if (deleteIndex !== -1) allBusData[currentBusId].splice(deleteIndex, 1); 
             
             document.querySelector(".btn-delete").innerText = "Delete Student";
             closeModals();
-            renderTable(); // Instantly redraws!
+            renderTable(); 
         }
 
         // --- SEARCH & PDF ---
         function filterTable() {
             const input = document.getElementById("searchInput").value.toLowerCase();
             const rows = document.querySelectorAll("#busTableBody tr");
-            
             let visibleCount = 1;
             rows.forEach(row => {
-                const text = row.innerText.toLowerCase();
-                if (text.includes(input)) {
+                if (row.innerText.toLowerCase().includes(input)) {
                     row.style.display = "";
                     row.cells[0].innerText = visibleCount++; 
                 } else {
@@ -346,9 +381,8 @@
             doc.text("Effective: 01/04/2026", 14, 37);
 
             doc.autoTable({
-                startY: 45,
-                head: [['S.No', 'Bus Stop', 'Name', 'Time']],
-                body: rows, theme: 'striped', headStyles: { fillColor: [44, 62, 80] },
+                startY: 45, head: [['S.No', 'Bus Stop', 'Name', 'Time']], body: rows, 
+                theme: 'striped', headStyles: { fillColor: [44, 62, 80] },
                 styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { halign: 'center' } }
             });
 
