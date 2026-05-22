@@ -20,8 +20,22 @@
         }
         .bus-buttons button:hover { background-color: #1abc9c; }
 
-        .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
+        .controls { display: flex; flex-direction: column; align-items: center; gap: 15px; margin-top: 15px; }
         #searchInput { display: none; padding: 10px; width: 60%; max-width: 300px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .pdf-options {
+            display: none;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 90%;
+        }
+        .pdf-options p { margin: 0 0 10px 0; font-weight: bold; color: #2c3e50; }
+        .checkbox-group { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; }
+        .checkbox-label { display: flex; align-items: center; gap: 5px; cursor: pointer; font-size: 14px; }
+        
         #downloadPdfBtn { display: none; padding: 10px 20px; background-color: #27ae60; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         #downloadPdfBtn:hover { background-color: #219150; }
 
@@ -35,7 +49,6 @@
         tbody tr { transition: background-color 0.2s; cursor: pointer; }
         tbody tr:hover { background-color: #e8f4f8; }
         
-        /* NEW: Styling for the row while it is being dragged */
         .sortable-ghost { opacity: 0.4; background-color: #f1c40f; }
 
         #warning { color: red; font-weight: bold; }
@@ -72,7 +85,22 @@
         </div>
 
         <div class="controls">
-            <input type="text" id="searchInput" placeholder="Search stop or name..." onkeyup="filterTable()">
+            <input type="text" id="searchInput" placeholder="Search stop, name or admission no..." onkeyup="filterTable()">
+            
+            <!-- UPDATED: Added Admission No Checkbox -->
+            <div id="pdfOptions" class="pdf-options">
+                <p>Select Columns to Include in PDF:</p>
+                <div class="checkbox-group">
+                    <label class="checkbox-label"><input type="checkbox" id="col_admission"> Admission No</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_stop" checked> Bus Stop</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_name" checked> Student Name</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_time" checked> Time</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_busno"> Bus No</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_driver"> Driver</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_mob"> Driver Mob</label>
+                </div>
+            </div>
+
             <button id="downloadPdfBtn" onclick="downloadPDF()">Download PDF List</button>
         </div>
 
@@ -87,6 +115,7 @@
         </div>
     </div>
 
+    <!-- Modals remain unchanged to preserve existing behaviors -->
     <div id="actionModal" class="modal-overlay">
         <div class="modal-box">
             <h3 id="actionModalTitle">Student Options</h3>
@@ -112,7 +141,6 @@
     <div class="footer">&copy; 2026 Bus Timings</div>
 
     <script>
-        // --- PASTE YOUR WEB APP URL BELOW ---
         const scriptUrl = "https://script.google.com/macros/s/AKfycbzbl90xZu2eczNYVqzRah7bHJh7iaHkkyGwzE_Z98qvp3xe5mymbu8wdNKaVWvvtXQ/exec"; 
         
         const busTitles = {
@@ -127,7 +155,7 @@
         let targetName = "";
         let targetTime = "";
         let isEditing = false; 
-        let sortableInstance = null; // Stores the drag-and-drop tool
+        let sortableInstance = null;
 
         async function fetchBusData() {
             try {
@@ -141,13 +169,25 @@
             }
         }
 
+        // UPDATED: Destructured to process the new Admission No position
+        // Expected sheet layout order: [Bus, BusStop, Student Name, Time, BusNo, Driver, mob no, AdmissionNo]
         function parseSheetData(values) {
             if (!values) return {};
             const busData = {};
             values.slice(1).forEach(row => {
-                const [bus, stop, name, time] = row;
+                const [bus, stop, name, time, busNo, driver, mobNo, admissionNo] = row;
+                if (!bus) return;
+                
                 if (!busData[bus]) busData[bus] = [];
-                busData[bus].push({ stop, name, time });
+                busData[bus].push({ 
+                    stop: stop || "", 
+                    name: name || "", 
+                    time: time || "", 
+                    busNo: busNo || "", 
+                    driver: driver || "", 
+                    mobNo: mobNo || "",
+                    admissionNo: admissionNo || "" 
+                });
             });
             return busData;
         }
@@ -162,6 +202,7 @@
             renderTable(); 
             
             document.getElementById("searchInput").style.display = "inline-block";
+            document.getElementById("pdfOptions").style.display = "block";
             document.getElementById("downloadPdfBtn").style.display = "inline-block";
         }
 
@@ -185,30 +226,26 @@
                 tbody.innerHTML = `<tr class="no-drag" onclick="openAddModal(true)"><td colspan="4" style="text-align:center; color:blue;">No students found. Click here to add the first one!</td></tr>`;
             }
             filterTable(); 
-            initSortable(); // Re-bind the drag tool every time the table is drawn
+            initSortable();
         }
 
-        // --- NEW: DRAG AND DROP / LONG PRESS LOGIC ---
         function initSortable() {
             const tbody = document.getElementById("busTableBody");
-            if (sortableInstance) sortableInstance.destroy(); // Clear old tool
+            if (sortableInstance) sortableInstance.destroy();
 
             sortableInstance = new Sortable(tbody, {
                 animation: 150,
-                delay: 200, // Requires 200ms hold on mobile before dragging starts
-                delayOnTouchOnly: true, // Desktop remains instant click-and-drag
-                filter: ".no-drag", // Prevents dragging the "No students found" message
+                delay: 200,
+                delayOnTouchOnly: true,
+                filter: ".no-drag",
                 onEnd: async function (evt) {
-                    if (evt.oldIndex === evt.newIndex) return; // Didn't actually move
+                    if (evt.oldIndex === evt.newIndex) return;
 
-                    // 1. Move the data locally
                     const movedItem = allBusData[currentBusId].splice(evt.oldIndex, 1)[0];
                     allBusData[currentBusId].splice(evt.newIndex, 0, movedItem);
 
-                    // 2. Visually redraw the table to fix the Serial Numbers
                     renderTable(); 
 
-                    // 3. Save to Google Sheet
                     document.getElementById("busTitle").innerText = busTitles[currentBusId] + " - Saving order...";
                     const formData = new URLSearchParams();
                     formData.append("action", "reorder");
@@ -221,7 +258,6 @@
             });
         }
 
-        // --- MODAL CONTROLS ---
         function openActionModal(stop, name, time) {
             targetStop = stop;
             targetName = name;
@@ -338,7 +374,17 @@
             
             if (!allBusData[currentBusId]) allBusData[currentBusId] = [];
             const indexToUpdate = allBusData[currentBusId].findIndex(item => item.stop === targetStop && item.name === targetName);
-            const updatedStudent = { stop: finalStop, name: name, time: formattedTime };
+            
+            const existingItem = indexToUpdate !== -1 ? allBusData[currentBusId][indexToUpdate] : {};
+            const updatedStudent = { 
+                stop: finalStop, 
+                name: name, 
+                time: formattedTime,
+                busNo: existingItem.busNo || "",
+                driver: existingItem.driver || "",
+                mobNo: existingItem.mobNo || "",
+                admissionNo: existingItem.admissionNo || ""
+            };
 
             if (isEditing) {
                 if (indexToUpdate !== -1) allBusData[currentBusId][indexToUpdate] = updatedStudent;
@@ -388,26 +434,70 @@
             });
         }
 
+        // UPDATED: Included Admission No mapping profile inside configurations
         function downloadPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
             const busTitle = document.getElementById("busTitle").innerText;
-            const rows = [];
 
-            document.querySelectorAll("#busTableBody tr").forEach(row => {
-                if (row.style.display !== "none" && row.cells.length > 1) {
-                    rows.push([row.cells[0].innerText, row.cells[1].innerText, row.cells[2].innerText, row.cells[3].innerText]);
+            const configs = [
+                { id: 'col_admission', header: 'Admission No', key: 'admissionNo' },
+                { id: 'col_stop', header: 'Bus Stop', key: 'stop' },
+                { id: 'col_name', header: 'Student Name', key: 'name' },
+                { id: 'col_time', header: 'Time', key: 'time' },
+                { id: 'col_busno', header: 'Bus No', key: 'busNo' },
+                { id: 'col_driver', header: 'Driver', key: 'driver' },
+                { id: 'col_mob', header: 'Driver Mob', key: 'mobNo' }
+            ];
+
+            const dynamicHeaders = ['S.No'];
+            const activeConfigs = [];
+
+            configs.forEach(cfg => {
+                if (document.getElementById(cfg.id).checked) {
+                    dynamicHeaders.push(cfg.header);
+                    activeConfigs.push(cfg);
                 }
             });
+
+            if (activeConfigs.length === 0) {
+                alert("Please check at least one column to export.");
+                return;
+            }
+
+            const rows = [];
+            const searchInput = document.getElementById("searchInput").value.toLowerCase();
+
+            if (allBusData[currentBusId]) {
+                let currentSerial = 1;
+                allBusData[currentBusId].forEach(item => {
+                    const matchesSearch = !searchInput || 
+                        item.stop.toLowerCase().includes(searchInput) || 
+                        item.name.toLowerCase().includes(searchInput) ||
+                        item.admissionNo.toLowerCase().includes(searchInput);
+
+                    if (matchesSearch) {
+                        const rowData = [currentSerial++];
+                        activeConfigs.forEach(cfg => {
+                            rowData.push(item[cfg.key]);
+                        });
+                        rows.push(rowData);
+                    }
+                });
+            }
 
             doc.setFontSize(18); doc.text("Bus Stop Timings", 14, 20);
             doc.setFontSize(12); doc.text(`Route: ${busTitle}`, 14, 30);
             doc.text("Effective: 01/04/2026", 14, 37);
 
             doc.autoTable({
-                startY: 45, head: [['S.No', 'Bus Stop', 'Name', 'Time']], body: rows, 
-                theme: 'striped', headStyles: { fillColor: [44, 62, 80] },
-                styles: { fontSize: 10, cellPadding: 3 }, columnStyles: { 0: { halign: 'center' } }
+                startY: 45, 
+                head: [dynamicHeaders], 
+                body: rows, 
+                theme: 'striped', 
+                headStyles: { fillColor: [44, 62, 80] },
+                styles: { fontSize: 10, cellPadding: 3 }, 
+                columnStyles: { 0: { halign: 'center' } }
             });
 
             doc.save(`${busTitle.replace(/\s+/g, '_')}.pdf`);
