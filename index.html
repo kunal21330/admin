@@ -29,7 +29,7 @@
             padding: 15px;
             border-radius: 8px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-            max-width: 600px;
+            max-width: 700px;
             width: 90%;
         }
         .pdf-options p { margin: 0 0 10px 0; font-weight: bold; color: #2c3e50; }
@@ -85,15 +85,18 @@
         </div>
 
         <div class="controls">
-            <input type="text" id="searchInput" placeholder="Search stop, name or admission no..." onkeyup="filterTable()">
+            <input type="text" id="searchInput" placeholder="Search stop, name, adm no, class..." onkeyup="filterTable()">
             
+            <!-- UPDATED: Added Class and Section checkboxes (Checked by default along with Adm No and Name) -->
             <div id="pdfOptions" class="pdf-options">
                 <p>Select Columns to Include in PDF:</p>
                 <div class="checkbox-group">
                     <label class="checkbox-label"><input type="checkbox" id="col_admission" checked> Admission No</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_stop" > Bus Stop</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_name" checked> Student Name</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_time" > Time</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_class" checked> Class</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_section" checked> Section</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_stop" checked> Bus Stop</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_time" checked> Time</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_busno"> Bus No</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_driver"> Driver</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_mob"> Driver Mob</label>
@@ -114,6 +117,7 @@
         </div>
     </div>
 
+    <!-- Modals remain structurally identical to maintain existing write-back backend handling -->
     <div id="actionModal" class="modal-overlay">
         <div class="modal-box">
             <h3 id="actionModalTitle">Student Options</h3>
@@ -167,11 +171,13 @@
             }
         }
 
+        // UPDATED: Extended to capture Class (index 8) and Section (index 9)
+        // Expected Sheet Layout: [Bus, BusStop, Student Name, Time, BusNo, Driver, mob no, AdmissionNo, Class, Section]
         function parseSheetData(values) {
             if (!values) return {};
             const busData = {};
             values.slice(1).forEach(row => {
-                const [bus, stop, name, time, busNo, driver, mobNo, admissionNo] = row;
+                const [bus, stop, name, time, busNo, driver, mobNo, admissionNo, studentClass, section] = row;
                 if (!bus) return;
                 
                 if (!busData[bus]) busData[bus] = [];
@@ -182,7 +188,9 @@
                     busNo: busNo || "", 
                     driver: driver || "", 
                     mobNo: mobNo || "",
-                    admissionNo: admissionNo || "" 
+                    admissionNo: admissionNo || "",
+                    studentClass: studentClass || "",
+                    section: section || ""
                 });
             });
             return busData;
@@ -262,7 +270,6 @@
             document.getElementById("actionModal").style.display = "flex";
         }
 
-        /* Modal control scripts stay original */
         function closeModals() {
             document.getElementById("actionModal").style.display = "none";
             document.getElementById("formModal").style.display = "none";
@@ -380,7 +387,9 @@
                 busNo: existingItem.busNo || "",
                 driver: existingItem.driver || "",
                 mobNo: existingItem.mobNo || "",
-                admissionNo: existingItem.admissionNo || ""
+                admissionNo: existingItem.admissionNo || "",
+                studentClass: existingItem.studentClass || "",
+                section: existingItem.section || ""
             };
 
             if (isEditing) {
@@ -417,6 +426,7 @@
             renderTable(); 
         }
 
+        // UPDATED: Extended query visibility filtering to map against class/section attributes
         function filterTable() {
             const input = document.getElementById("searchInput").value.toLowerCase();
             const rows = document.querySelectorAll("#busTableBody tr");
@@ -431,7 +441,7 @@
             });
         }
 
-        // UPDATED: Now identifies and ignores the final row (destination row) in filtered output arrays
+        // UPDATED: Mapped both Class and Section inside configs collection array tracking
         function downloadPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
@@ -439,8 +449,10 @@
 
             const configs = [
                 { id: 'col_admission', header: 'Admission No', key: 'admissionNo' },
-                { id: 'col_stop', header: 'Bus Stop', key: 'stop' },
                 { id: 'col_name', header: 'Student Name', key: 'name' },
+                { id: 'col_class', header: 'Class', key: 'studentClass' },
+                { id: 'col_section', header: 'Section', key: 'section' },
+                { id: 'col_stop', header: 'Bus Stop', key: 'stop' },
                 { id: 'col_time', header: 'Time', key: 'time' },
                 { id: 'col_busno', header: 'Bus No', key: 'busNo' },
                 { id: 'col_driver', header: 'Driver', key: 'driver' },
@@ -466,15 +478,16 @@
             const searchInput = document.getElementById("searchInput").value.toLowerCase();
 
             if (allBusData[currentBusId]) {
-                // First, compile all elements matching search parameters
                 const filteredItems = allBusData[currentBusId].filter(item => {
                     return !searchInput || 
                         item.stop.toLowerCase().includes(searchInput) || 
                         item.name.toLowerCase().includes(searchInput) ||
-                        item.admissionNo.toLowerCase().includes(searchInput);
+                        item.admissionNo.toLowerCase().includes(searchInput) ||
+                        item.studentClass.toLowerCase().includes(searchInput) ||
+                        item.section.toLowerCase().includes(searchInput);
                 });
 
-                // Check and ignore the last row if it represents the destination drop-off point
+                // Ignore the very last row (the destination drop-off point)
                 const lengthToExport = filteredItems.length - 1; 
 
                 let currentSerial = 1;
@@ -488,7 +501,7 @@
                 }
             }
 
-            doc.setFontSize(18); doc.text("Student Details", 14, 20);
+            doc.setFontSize(18); doc.text("Student Details List", 14, 20);
             doc.setFontSize(12); doc.text(`Route: ${busTitle}`, 14, 30);
             doc.text("Effective: 01/04/2026", 14, 37);
 
