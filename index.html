@@ -87,14 +87,13 @@
         <div class="controls">
             <input type="text" id="searchInput" placeholder="Search stop, name or admission no..." onkeyup="filterTable()">
             
-            <!-- UPDATED: Added Admission No Checkbox -->
             <div id="pdfOptions" class="pdf-options">
                 <p>Select Columns to Include in PDF:</p>
                 <div class="checkbox-group">
-                    <label class="checkbox-label"><input type="checkbox" id="col_admission"> Admission No</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_stop" checked> Bus Stop</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_admission" checked> Admission No</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_stop" > Bus Stop</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_name" checked> Student Name</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_time" checked> Time</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_time" > Time</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_busno"> Bus No</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_driver"> Driver</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_mob"> Driver Mob</label>
@@ -115,7 +114,6 @@
         </div>
     </div>
 
-    <!-- Modals remain unchanged to preserve existing behaviors -->
     <div id="actionModal" class="modal-overlay">
         <div class="modal-box">
             <h3 id="actionModalTitle">Student Options</h3>
@@ -169,8 +167,6 @@
             }
         }
 
-        // UPDATED: Destructured to process the new Admission No position
-        // Expected sheet layout order: [Bus, BusStop, Student Name, Time, BusNo, Driver, mob no, AdmissionNo]
         function parseSheetData(values) {
             if (!values) return {};
             const busData = {};
@@ -266,6 +262,7 @@
             document.getElementById("actionModal").style.display = "flex";
         }
 
+        /* Modal control scripts stay original */
         function closeModals() {
             document.getElementById("actionModal").style.display = "none";
             document.getElementById("formModal").style.display = "none";
@@ -434,7 +431,7 @@
             });
         }
 
-        // UPDATED: Included Admission No mapping profile inside configurations
+        // UPDATED: Now identifies and ignores the final row (destination row) in filtered output arrays
         function downloadPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
@@ -469,24 +466,29 @@
             const searchInput = document.getElementById("searchInput").value.toLowerCase();
 
             if (allBusData[currentBusId]) {
-                let currentSerial = 1;
-                allBusData[currentBusId].forEach(item => {
-                    const matchesSearch = !searchInput || 
+                // First, compile all elements matching search parameters
+                const filteredItems = allBusData[currentBusId].filter(item => {
+                    return !searchInput || 
                         item.stop.toLowerCase().includes(searchInput) || 
                         item.name.toLowerCase().includes(searchInput) ||
                         item.admissionNo.toLowerCase().includes(searchInput);
-
-                    if (matchesSearch) {
-                        const rowData = [currentSerial++];
-                        activeConfigs.forEach(cfg => {
-                            rowData.push(item[cfg.key]);
-                        });
-                        rows.push(rowData);
-                    }
                 });
+
+                // Check and ignore the last row if it represents the destination drop-off point
+                const lengthToExport = filteredItems.length - 1; 
+
+                let currentSerial = 1;
+                for (let i = 0; i < lengthToExport; i++) {
+                    const item = filteredItems[i];
+                    const rowData = [currentSerial++];
+                    activeConfigs.forEach(cfg => {
+                        rowData.push(item[cfg.key]);
+                    });
+                    rows.push(rowData);
+                }
             }
 
-            doc.setFontSize(18); doc.text("Student details", 14, 20);
+            doc.setFontSize(18); doc.text("Student Details", 14, 20);
             doc.setFontSize(12); doc.text(`Route: ${busTitle}`, 14, 30);
             doc.text("Effective: 01/04/2026", 14, 37);
 
