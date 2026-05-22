@@ -87,7 +87,6 @@
         <div class="controls">
             <input type="text" id="searchInput" placeholder="Search stop, name, adm no, class..." onkeyup="filterTable()">
             
-            <!-- UPDATED: Added Class and Section checkboxes (Checked by default along with Adm No and Name) -->
             <div id="pdfOptions" class="pdf-options">
                 <p>Select Columns to Include in PDF:</p>
                 <div class="checkbox-group">
@@ -95,11 +94,8 @@
                     <label class="checkbox-label"><input type="checkbox" id="col_name" checked> Student Name</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_class" checked> Class</label>
                     <label class="checkbox-label"><input type="checkbox" id="col_section" checked> Section</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_stop" checked> Bus Stop</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_time" checked> Time</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_busno"> Bus No</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_driver"> Driver</label>
-                    <label class="checkbox-label"><input type="checkbox" id="col_mob"> Driver Mob</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_stop" > Bus Stop</label>
+                    <label class="checkbox-label"><input type="checkbox" id="col_time" > Time</label>
                 </div>
             </div>
 
@@ -117,7 +113,6 @@
         </div>
     </div>
 
-    <!-- Modals remain structurally identical to maintain existing write-back backend handling -->
     <div id="actionModal" class="modal-overlay">
         <div class="modal-box">
             <h3 id="actionModalTitle">Student Options</h3>
@@ -171,13 +166,11 @@
             }
         }
 
-        // UPDATED: Extended to capture Class (index 8) and Section (index 9)
-        // Expected Sheet Layout: [Bus, BusStop, Student Name, Time, BusNo, Driver, mob no, AdmissionNo, Class, Section]
         function parseSheetData(values) {
             if (!values) return {};
             const busData = {};
             values.slice(1).forEach(row => {
-                const [bus, stop, name, time, busNo, driver, mobNo, admissionNo, studentClass, section] = row;
+                const [bus, stop, name, time, busNo, driver, mobNo, admissionNo, studentClass, section, dlNo] = row;
                 if (!bus) return;
                 
                 if (!busData[bus]) busData[bus] = [];
@@ -190,7 +183,8 @@
                     mobNo: mobNo || "",
                     admissionNo: admissionNo || "",
                     studentClass: studentClass || "",
-                    section: section || ""
+                    section: section || "",
+                    dlNo: dlNo || ""
                 });
             });
             return busData;
@@ -389,7 +383,8 @@
                 mobNo: existingItem.mobNo || "",
                 admissionNo: existingItem.admissionNo || "",
                 studentClass: existingItem.studentClass || "",
-                section: existingItem.section || ""
+                section: existingItem.section || "",
+                dlNo: existingItem.dlNo || ""
             };
 
             if (isEditing) {
@@ -426,7 +421,6 @@
             renderTable(); 
         }
 
-        // UPDATED: Extended query visibility filtering to map against class/section attributes
         function filterTable() {
             const input = document.getElementById("searchInput").value.toLowerCase();
             const rows = document.querySelectorAll("#busTableBody tr");
@@ -441,11 +435,10 @@
             });
         }
 
-        // UPDATED: Mapped both Class and Section inside configs collection array tracking
+        // UPDATED: Refructured top metadata vertical orientation layout block matching specifications
         function downloadPDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            const busTitle = document.getElementById("busTitle").innerText;
 
             const configs = [
                 { id: 'col_admission', header: 'Admission No', key: 'admissionNo' },
@@ -453,10 +446,7 @@
                 { id: 'col_class', header: 'Class', key: 'studentClass' },
                 { id: 'col_section', header: 'Section', key: 'section' },
                 { id: 'col_stop', header: 'Bus Stop', key: 'stop' },
-                { id: 'col_time', header: 'Time', key: 'time' },
-                { id: 'col_busno', header: 'Bus No', key: 'busNo' },
-                { id: 'col_driver', header: 'Driver', key: 'driver' },
-                { id: 'col_mob', header: 'Driver Mob', key: 'mobNo' }
+                { id: 'col_time', header: 'Time', key: 'time' }
             ];
 
             const dynamicHeaders = ['S.No'];
@@ -474,6 +464,20 @@
                 return;
             }
 
+            let busNoText = "__________________";
+            let driverText = "___________________";
+            let driverMobText = "_________________";
+            let dlNoText = "_________________";
+            let categoryText = "junior/senior";
+            
+            if (currentBusId) {
+                if (currentBusId.toLowerCase().includes('junior')) {
+                    categoryText = "junior";
+                } else if (currentBusId.toLowerCase().includes('senior')) {
+                    categoryText = "senior";
+                }
+            }
+
             const rows = [];
             const searchInput = document.getElementById("searchInput").value.toLowerCase();
 
@@ -487,7 +491,13 @@
                         item.section.toLowerCase().includes(searchInput);
                 });
 
-                // Ignore the very last row (the destination drop-off point)
+                if (filteredItems.length > 0) {
+                    busNoText = filteredItems[0].busNo || "__________________";
+                    driverText = filteredItems[0].driver || "___________________";
+                    driverMobText = filteredItems[0].mobNo || "_________________";
+                    dlNoText = filteredItems[0].dlNo || "_________________";
+                }
+
                 const lengthToExport = filteredItems.length - 1; 
 
                 let currentSerial = 1;
@@ -501,21 +511,69 @@
                 }
             }
 
-            doc.setFontSize(18); doc.text("Student Details List", 14, 20);
-            doc.setFontSize(12); doc.text(`Route: ${busTitle}`, 14, 30);
-            doc.text("Effective: 01/04/2026", 14, 37);
+            // Main Title Header
+            doc.setFontSize(16); 
+            doc.setFont("Helvetica", "bold");
+            doc.text("Student Details List (Hansi)", 14, 20);
+            
+            // Floating Compact Effective Date (Top Right)
+            doc.setFontSize(9); 
+            doc.setFont("Helvetica", "normal");
+            doc.text("Effective: 01/04/2026", 196, 20, { align: "right" });
 
+            // Structural Top Border Rule
+            doc.setLineWidth(0.2);
+            doc.line(14, 24, 196, 24); 
+
+            // Vertical 2-Column Metadata Layout Section
+            doc.setFontSize(10);
+            doc.setFont("Helvetica", "normal");
+
+            // Row 1
+            doc.text(`Vehicle no: ${busNoText}`, 14, 31);
+            doc.text(`Name of Driver: ${driverText}`, 110, 31);
+
+            // Row 2
+            doc.text(`Station From: Hansi`, 14, 38);
+            doc.text(`DL no: ${dlNoText}`, 110, 38);
+
+            // Row 3
+            doc.text(`Contact no of Driver: ${driverMobText}`, 14, 45);
+            doc.text(`Route Category: ${categoryText}`, 110, 45);
+
+            // Row 4
+            doc.text(`Type of vehicle: Bus`, 14, 52);
+
+            // Bottom Border Rule
+            doc.line(14, 57, 196, 57); 
+
+            // Data Grid Generation
             doc.autoTable({
-                startY: 45, 
+                startY: 63, 
                 head: [dynamicHeaders], 
                 body: rows, 
-                theme: 'striped', 
-                headStyles: { fillColor: [44, 62, 80] },
-                styles: { fontSize: 10, cellPadding: 3 }, 
-                columnStyles: { 0: { halign: 'center' } }
+                theme: 'grid', 
+                headStyles: { 
+                    fillColor: [240, 240, 240], 
+                    textColor: [0, 0, 0], 
+                    fontStyle: 'bold',
+                    lineWidth: 0.2,
+                    lineColor: [180, 180, 180]
+                },
+                styles: { 
+                    fontSize: 9, 
+                    cellPadding: 2.5,
+                    textColor: [50, 50, 50],
+                    font: 'Helvetica',
+                    lineWidth: 0.2,
+                    lineColor: [200, 200, 200]
+                }, 
+                columnStyles: { 
+                    0: { halign: 'center', fontStyle: 'bold', fillColor: [248, 248, 248] }
+                }
             });
 
-            doc.save(`${busTitle.replace(/\s+/g, '_')}.pdf`);
+            doc.save(`Student_Details_${busNoText.replace(/\s+/g, '_')}.pdf`);
         }
     </script>
 </body>
